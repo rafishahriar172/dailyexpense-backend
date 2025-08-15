@@ -1,6 +1,5 @@
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/require-await */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
@@ -14,18 +13,25 @@ import {
   Req,
   Res,
   Delete,
+  Ip,
 } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import express from 'express';
 import { AuthService } from './auth.service';
 import { GetUser } from '../common/decorators/get-user.decorator';
-import { 
-  RegisterDto, 
-  LoginDto, 
+import {
+  RegisterDto,
+  LoginDto,
   RefreshTokenDto,
-  ChangePasswordDto 
+  ChangePasswordDto,
+  GoogleAuthDto,
 } from './dto';
 import { AuthResponse } from './auth/auth.types';
 
@@ -38,10 +44,10 @@ export class AuthController {
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new user' })
-  @ApiResponse({ 
-    status: 201, 
+  @ApiResponse({
+    status: 201,
     description: 'User successfully registered',
-    type: AuthResponse 
+    type: AuthResponse,
   })
   @ApiResponse({ status: 400, description: 'Bad Request' })
   @ApiResponse({ status: 409, description: 'User already exists' })
@@ -56,10 +62,10 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login user' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'User successfully logged in',
-    type: AuthResponse 
+    type: AuthResponse,
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 403, description: 'Account locked' })
@@ -72,36 +78,46 @@ export class AuthController {
     return this.authService.login(dto, ipAddress, userAgent);
   }
 
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth login' })
-  @ApiResponse({ status: 302, description: 'Redirect to Google OAuth' })
-  async googleAuth(@Req() req: express.Request) {
-    // Initiates Google OAuth flow
-  }
+  // @Get('google')
+  // @UseGuards(AuthGuard('google'))
+  // @ApiOperation({ summary: 'Google OAuth login' })
+  // @ApiResponse({ status: 302, description: 'Redirect to Google OAuth' })
+  // async googleAuth(@Req() req: express.Request) {
+  //   // Initiates Google OAuth flow
+  // }
 
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth callback' })
-  async googleAuthCallback(
-    @Req() req: express.Request,
-    @Res() res: express.Response,
+  // @Get('google/callback')
+  // @UseGuards(AuthGuard('google'))
+  // @ApiOperation({ summary: 'Google OAuth callback' })
+  // async googleAuthCallback(
+  //   @Req() req: express.Request,
+  //   @Res() res: express.Response,
+  // ) {
+  //   const ipAddress = req.ip || req.connection.remoteAddress;
+  //   const result = await this.authService.googleAuth(req.user as any, ipAddress);
+
+  //   // Redirect to frontend with tokens
+  //   const redirectUrl = `${process.env.CORS_ORIGIN}/auth/callback?token=${result.accessToken}&refresh=${result.refreshToken}`;
+  //   res.redirect(redirectUrl);
+  // }
+
+  @Post('google')
+  @ApiOperation({ summary: 'Handle Google OAuth data from frontend' })
+  @ApiResponse({ status: 200, description: 'Google authentication successful' })
+  async googleAuthApi(
+    @Body() googleAuthDto: GoogleAuthDto,
+    @Ip() ipAddress: string,
   ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const result = await this.authService.googleAuth(req.user as any, ipAddress);
-    
-    // Redirect to frontend with tokens
-    const redirectUrl = `${process.env.CORS_ORIGIN}/auth/callback?token=${result.accessToken}&refresh=${result.refreshToken}`;
-    res.redirect(redirectUrl);
+    return this.authService.googleAuth(googleAuthDto, ipAddress);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Token successfully refreshed',
-    type: AuthResponse 
+    type: AuthResponse,
   })
   @ApiResponse({ status: 401, description: 'Invalid refresh token' })
   async refreshTokens(
