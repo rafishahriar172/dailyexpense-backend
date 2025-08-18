@@ -19,6 +19,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
 import { 
   LoginDto, 
   RegisterDto, 
@@ -31,7 +32,7 @@ import { JwtPayload, AuthResponse } from './auth/auth.types';
 @Injectable()
 export class AuthService {
   private readonly MAX_LOGIN_ATTEMPTS = 5;
-  private readonly LOCK_TIME = 30 * 60 * 1000; // 30 minutes
+  private readonly LOCK_TIME = 30 * 60 * 1000; // 30 minutes  
 
   constructor(
     private prisma: PrismaService,
@@ -39,6 +40,7 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private auditService: AuditService,
+    private mailService: MailService,
   ) {}
 
   async register(dto: RegisterDto, ipAddress?: string): Promise<AuthResponse> {
@@ -84,6 +86,14 @@ export class AuthService {
     
     // Save refresh token
     await this.saveRefreshToken(user.id, tokens.refreshToken, ipAddress);
+
+    const confirmationLink = `${process.env.CORS_ORIGIN}/confirm?token=${user.id}`;
+
+    await this.mailService.sendUserConfirmation(
+      user.email,
+      `${user.username}`,
+      confirmationLink,
+    )
 
     return {
       user: this.excludePassword(user),
@@ -336,6 +346,34 @@ export class AuthService {
     return this.excludePassword(user);
   }
 
+  async confirmEmail(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email is already confirmed');
+    }
+
+    // Update user email verification status
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { isEmailVerified: true },
+    });
+
+    // Log email confirmation
+    await this.auditService.log({
+      userId,
+      action: 'EMAIL_CONFIRMED',
+      entity: 'User',
+      entityId: userId,
+    });
+  }
+
   private async generateTokens(userId: string, email: string) {
     const payload: JwtPayload = {
       sub: userId,
@@ -434,4 +472,5 @@ export class AuthService {
     const { passwordHash, refreshToken, ...result } = user;
     return result;
   }
+ 
 }

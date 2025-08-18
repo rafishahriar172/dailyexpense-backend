@@ -14,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     BudgetsModule,
     UsersModule,
     HealthModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

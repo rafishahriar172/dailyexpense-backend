@@ -14,6 +14,7 @@ import {
   Res,
   Delete,
   Ip,
+  Query,
 } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
@@ -166,5 +167,12 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User profile retrieved' })
   async getProfile(@GetUser() user: any) {
     return user;
+  }
+
+  @Get('confirm-email')
+  @ApiOperation({ summary: 'ConfirmEmail' })
+  @ApiResponse({ status: 200, description: 'User profile retrieved' })
+  async confirmEmail(@Query('token') token: string) {
+    return this.authService.confirmEmail(token);
   }
 }
