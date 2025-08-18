@@ -3,6 +3,9 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '5000', 10),
   database: {
     url: process.env.DATABASE_URL,
+    maxConnections: parseInt(process.env.DB_MAX_CONNECTIONS ?? '10', 10),
+    connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT ?? '60000', 10),
+    poolTimeout: parseInt(process.env.DB_POOL_TIMEOUT ?? '20000', 10),
   },
   jwt: {
     secret: process.env.JWT_SECRET,
