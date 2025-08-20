@@ -169,7 +169,7 @@ export class AuthController {
     return user;
   }
 
-  @Get('confirm-email')
+  @Post('confirm-email')
   @ApiOperation({ summary: 'ConfirmEmail' })
   @ApiResponse({ status: 200, description: 'User profile retrieved' })
   async confirmEmail(@Query('token') token: string) {
