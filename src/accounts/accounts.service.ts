@@ -6,10 +6,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateAccountDto, UpdateAccountDto } from './dto';
+import { AccountType } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class AccountsService {
@@ -143,17 +149,44 @@ export class AccountsService {
     return { message: 'Account deleted successfully' };
   }
 
+  async createDefault(userId: string, ipAddress?: string) {
+  const account = await this.prisma.account.create({
+    data: {
+      userId,
+      name: 'Default Savings Account',
+      type: AccountType.SAVINGS, // 👈 default to savings
+      balance: new Decimal(0),
+      currency: 'USD',
+      description: 'Automatically created default savings account',
+    },
+  });
+
+  // Log account creation
+  await this.auditService.log({
+    userId,
+    action: 'ACCOUNT_DEFAULT_CREATED',
+    entity: 'Account',
+    entityId: account.id,
+    newValues: account,
+    ipAddress,
+  });
+
+  return account; // 👈 must return
+}
   async getAccountSummary(userId: string) {
     const accounts = await this.findAll(userId);
-    
+
     const summary = accounts.reduce(
       (acc, account) => {
         acc.totalBalance = acc.totalBalance.add(account.balance);
-        acc.accountsByType[account.type] = (acc.accountsByType[account.type] || 0) + 1;
+        acc.accountsByType[account.type] =
+          (acc.accountsByType[account.type] || 0) + 1;
         return acc;
       },
       {
-        totalBalance: new (require('@prisma/client/runtime/library').Decimal)(0),
+        totalBalance: new (require('@prisma/client/runtime/library').Decimal)(
+          0,
+        ),
         totalAccounts: accounts.length,
         accountsByType: {} as Record<string, number>,
       },

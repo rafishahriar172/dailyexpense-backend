@@ -4,16 +4,21 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Prisma, TransactionCategory, TransactionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../audit/audit.service';
-import { 
-  CreateTransactionDto, 
-  UpdateTransactionDto, 
+import {
+  CreateTransactionDto,
+  UpdateTransactionDto,
   CreateTransferDto,
-  GetTransactionsQueryDto 
+  GetTransactionsQueryDto,
 } from './dto';
 
 @Injectable()
@@ -24,30 +29,41 @@ export class TransactionsService {
     private auditService: AuditService,
   ) {}
 
-  async create(
-    userId: string, 
-    dto: CreateTransactionDto,
-    ipAddress?: string
-  ) {
+  async create(userId: string, dto: CreateTransactionDto, ipAddress?: string) {
     // Verify account ownership
     const account = await this.accountsService.findOne(userId, dto.accountId);
     if (!account) {
       throw new NotFoundException('Account not found');
     }
 
+    console.log('Creating transaction:', dto);
     return this.prisma.$transaction(async (tx) => {
       // Create transaction
+      let account;
+
+      if (!dto.accountId || dto.accountId.trim() === '') {
+        const existingAccounts = await this.accountsService.findAll(userId);
+        if (existingAccounts.length === 0) {
+          account = await this.accountsService.createDefault(userId, ipAddress);
+        } else {
+          account = existingAccounts[0]; // use first/default account
+        }
+      } else {
+        account = await this.accountsService.findOne(userId, dto.accountId);
+      }
       const transaction = await tx.transaction.create({
         data: {
           userId,
-          accountId: dto.accountId,
+          accountId: account.id,
           type: dto.type,
           category: dto.category,
           amount: dto.amount,
           description: dto.description,
           notes: dto.notes,
           tags: dto.tags || [],
-          transactionDate: dto.transactionDate || new Date(),
+          transactionDate: dto.transactionDate
+            ? new Date(dto.transactionDate)
+            : new Date(),
         },
         include: {
           account: true,
@@ -55,9 +71,8 @@ export class TransactionsService {
       });
 
       // Update account balance
-      const balanceChange = dto.type === TransactionType.EXPENSE 
-        ? dto.amount.mul(-1) 
-        : dto.amount;
+      const balanceChange =
+        dto.type === TransactionType.EXPENSE ? dto.amount.mul(-1) : dto.amount;
 
       await tx.account.update({
         where: { id: dto.accountId },
@@ -88,9 +103,9 @@ export class TransactionsService {
   }
 
   async createTransfer(
-    userId: string, 
+    userId: string,
     dto: CreateTransferDto,
-    ipAddress?: string
+    ipAddress?: string,
   ) {
     // Verify account ownership
     const [fromAccount, toAccount] = await Promise.all([
@@ -134,8 +149,8 @@ export class TransactionsService {
 
       // Calculate actual transfer amounts
       const fromAmount = dto.amount.add(dto.fees || 0);
-      const toAmount = dto.exchangeRate 
-        ? dto.amount.mul(dto.exchangeRate) 
+      const toAmount = dto.exchangeRate
+        ? dto.amount.mul(dto.exchangeRate)
         : dto.amount;
 
       // Update account balances
@@ -193,12 +208,12 @@ export class TransactionsService {
       ...(accountId && { accountId }),
       ...(type && { type }),
       ...(category && { category }),
-      ...(dateFrom || dateTo) && {
+      ...((dateFrom || dateTo) && {
         transactionDate: {
           ...(dateFrom && { gte: new Date(dateFrom) }),
           ...(dateTo && { lte: new Date(dateTo) }),
         },
-      },
+      }),
       ...(search && {
         OR: [
           { description: { contains: search, mode: 'insensitive' } },
@@ -262,27 +277,34 @@ export class TransactionsService {
   }
 
   async update(
-    userId: string, 
-    id: string, 
+    userId: string,
+    id: string,
     dto: UpdateTransactionDto,
-    ipAddress?: string
+    ipAddress?: string,
   ) {
     const existingTransaction = await this.findOne(userId, id);
 
     // Don't allow updating transfer transactions directly
-    if (existingTransaction.type === TransactionType.TRANSFER && existingTransaction.transfer) {
-      throw new BadRequestException('Cannot update transfer transactions directly');
+    if (
+      existingTransaction.type === TransactionType.TRANSFER &&
+      existingTransaction.transfer
+    ) {
+      throw new BadRequestException(
+        'Cannot update transfer transactions directly',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       // Calculate balance adjustment
-      const oldAmount = existingTransaction.type === TransactionType.EXPENSE 
-        ? existingTransaction.amount.mul(-1) 
-        : existingTransaction.amount;
+      const oldAmount =
+        existingTransaction.type === TransactionType.EXPENSE
+          ? existingTransaction.amount.mul(-1)
+          : existingTransaction.amount;
 
-      const newAmount = (dto.type || existingTransaction.type) === TransactionType.EXPENSE
-        ? (dto.amount || existingTransaction.amount).mul(-1)
-        : (dto.amount || existingTransaction.amount);
+      const newAmount =
+        (dto.type || existingTransaction.type) === TransactionType.EXPENSE
+          ? (dto.amount || existingTransaction.amount).mul(-1)
+          : dto.amount || existingTransaction.amount;
 
       const balanceAdjustment = newAmount.sub(oldAmount);
 
@@ -293,7 +315,9 @@ export class TransactionsService {
           ...(dto.type && { type: dto.type }),
           ...(dto.category && { category: dto.category }),
           ...(dto.amount && { amount: dto.amount }),
-          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.description !== undefined && {
+            description: dto.description,
+          }),
           ...(dto.notes !== undefined && { notes: dto.notes }),
           ...(dto.tags && { tags: dto.tags }),
           ...(dto.transactionDate && { transactionDate: dto.transactionDate }),
@@ -316,24 +340,29 @@ export class TransactionsService {
       }
 
       // Update budget if needed
-      if (existingTransaction.type === TransactionType.EXPENSE || dto.type === TransactionType.EXPENSE) {
+      if (
+        existingTransaction.type === TransactionType.EXPENSE ||
+        dto.type === TransactionType.EXPENSE
+      ) {
         // Revert old expense from budget
         if (existingTransaction.type === TransactionType.EXPENSE) {
           await this.updateBudgetSpent(
-            tx, 
-            userId, 
-            existingTransaction.category, 
-            existingTransaction.amount.mul(-1)
+            tx,
+            userId,
+            existingTransaction.category,
+            existingTransaction.amount.mul(-1),
           );
         }
-        
+
         // Add new expense to budget
-        if ((dto.type || existingTransaction.type) === TransactionType.EXPENSE) {
+        if (
+          (dto.type || existingTransaction.type) === TransactionType.EXPENSE
+        ) {
           await this.updateBudgetSpent(
-            tx, 
-            userId, 
-            dto.category || existingTransaction.category, 
-            dto.amount || existingTransaction.amount
+            tx,
+            userId,
+            dto.category || existingTransaction.category,
+            dto.amount || existingTransaction.amount,
           );
         }
       }
@@ -358,13 +387,16 @@ export class TransactionsService {
 
     return this.prisma.$transaction(async (tx) => {
       // Handle transfer deletion
-      if (transaction.type === TransactionType.TRANSFER && transaction.transfer) {
+      if (
+        transaction.type === TransactionType.TRANSFER &&
+        transaction.transfer
+      ) {
         const { transfer } = transaction;
-        
+
         // Revert account balances
         const fromAmount = transaction.amount.add(transfer.fees || 0);
-        const toAmount = transfer.exchangeRate 
-          ? transaction.amount.mul(transfer.exchangeRate) 
+        const toAmount = transfer.exchangeRate
+          ? transaction.amount.mul(transfer.exchangeRate)
           : transaction.amount;
 
         await Promise.all([
@@ -388,9 +420,10 @@ export class TransactionsService {
         });
       } else {
         // Revert account balance for regular transactions
-        const balanceChange = transaction.type === TransactionType.EXPENSE 
-          ? transaction.amount 
-          : transaction.amount.mul(-1);
+        const balanceChange =
+          transaction.type === TransactionType.EXPENSE
+            ? transaction.amount
+            : transaction.amount.mul(-1);
 
         await tx.account.update({
           where: { id: transaction.accountId },
@@ -402,10 +435,10 @@ export class TransactionsService {
         // Revert budget if expense
         if (transaction.type === TransactionType.EXPENSE) {
           await this.updateBudgetSpent(
-            tx, 
-            userId, 
-            transaction.category, 
-            transaction.amount.mul(-1)
+            tx,
+            userId,
+            transaction.category,
+            transaction.amount.mul(-1),
           );
         }
       }
@@ -430,41 +463,39 @@ export class TransactionsService {
   async getStatistics(userId: string, dateFrom?: string, dateTo?: string) {
     const where: Prisma.TransactionWhereInput = {
       userId,
-      ...(dateFrom || dateTo) && {
+      ...((dateFrom || dateTo) && {
         transactionDate: {
           ...(dateFrom && { gte: new Date(dateFrom) }),
           ...(dateTo && { lte: new Date(dateTo) }),
         },
-      },
+      }),
     };
 
-    const [
-      totalIncome,
-      totalExpense,
-      transactionCount,
-      categoryStats,
-    ] = await Promise.all([
-      this.prisma.transaction.aggregate({
-        where: { ...where, type: TransactionType.INCOME },
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.aggregate({
-        where: { ...where, type: TransactionType.EXPENSE },
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.count({ where }),
-      this.prisma.transaction.groupBy({
-        by: ['category', 'type'],
-        where,
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-    ]);
+    const [totalIncome, totalExpense, transactionCount, categoryStats] =
+      await Promise.all([
+        this.prisma.transaction.aggregate({
+          where: { ...where, type: TransactionType.INCOME },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.aggregate({
+          where: { ...where, type: TransactionType.EXPENSE },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.count({ where }),
+        this.prisma.transaction.groupBy({
+          by: ['category', 'type'],
+          where,
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+      ]);
 
     return {
       totalIncome: totalIncome._sum.amount || 0,
       totalExpense: totalExpense._sum.amount || 0,
-      netAmount: (totalIncome._sum.amount?.toNumber() || 0) - (totalExpense._sum.amount?.toNumber() || 0),
+      netAmount:
+        (totalIncome._sum.amount?.toNumber() || 0) -
+        (totalExpense._sum.amount?.toNumber() || 0),
       transactionCount,
       categoryBreakdown: categoryStats,
     };
@@ -474,10 +505,10 @@ export class TransactionsService {
     tx: Prisma.TransactionClient,
     userId: string,
     category: any,
-    amount: Prisma.Decimal
+    amount: Prisma.Decimal,
   ) {
     const currentDate = new Date();
-    
+
     const budget = await tx.budget.findFirst({
       where: {
         userId,

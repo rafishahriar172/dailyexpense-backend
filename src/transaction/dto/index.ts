@@ -3,18 +3,20 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { 
-  IsEnum, 
-  IsDecimal, 
-  IsString, 
-  IsOptional, 
-  IsDateString, 
-  IsArray, 
+import {
+  IsEnum,
+  IsDecimal,
+  IsString,
+  IsOptional,
+  IsDateString,
+  IsArray,
   IsUUID,
   IsNumber,
   Min,
-  Max, 
-  IsNotEmpty
+  Max,
+  IsNotEmpty,
+  IsNumberString,
+  isString,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -23,22 +25,33 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 export class CreateTransactionDto {
   @ApiProperty({ example: 'account-uuid' })
-  @IsUUID()
+  @IsString()
   accountId: string;
 
   @ApiProperty({ enum: TransactionType })
   @IsEnum(TransactionType)
   type: TransactionType;
 
-  @ApiProperty({ enum: TransactionCategory,
-  default: TransactionCategory.ACCOUNT_TRANSFER  })
+  @ApiProperty({
+    enum: TransactionCategory,
+    default: TransactionCategory.ACCOUNT_TRANSFER,
+  })
   @IsEnum(TransactionCategory)
   category: TransactionCategory;
 
-  @ApiProperty({ example: '100.50' })
-  @Transform(({ value }) => new Decimal(value))
+  @ApiProperty({ example: 100.5 })
+  @IsNotEmpty()
+  @Transform(
+    ({ value }) => {
+      if (value == null) return null;
+      if (typeof value === 'string' || typeof value === 'number') {
+        return new Decimal(value);
+      }
+      throw new Error('Amount must be a number or numeric string');
+    },
+    { toClassOnly: true },
+  )
   amount: Decimal;
-  
 
   @ApiProperty({ example: 'Grocery shopping', required: false })
   @IsOptional()
@@ -56,10 +69,10 @@ export class CreateTransactionDto {
   @IsString({ each: true })
   tags?: string[];
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, example: '2025-08-21T23:30:00.000Z' })
   @IsOptional()
   @IsDateString()
-  transactionDate?: Date;
+  transactionDate?: string;
 }
 
 export class UpdateTransactionDto {
@@ -97,11 +110,11 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   sortOrder?: 'asc' | 'desc';
-    amount: any;
-    description: undefined;
-    notes: undefined;
-    tags: { tags: any; };
-    transactionDate: { transactionDate: any; };
+  amount: any;
+  description: undefined;
+  notes: undefined;
+  tags: { tags: any };
+  transactionDate: { transactionDate: any };
 }
 
 export class CreateTransferDto {
@@ -138,8 +151,8 @@ export class CreateTransferDto {
   @IsOptional()
   @IsDateString()
   transactionDate?: Date;
-    category: TransactionCategory = TransactionCategory.ACCOUNT_TRANSFER;
-    notes: any;
+  category: TransactionCategory = TransactionCategory.ACCOUNT_TRANSFER;
+  notes: any;
 }
 
 export class GetTransactionsQueryDto {

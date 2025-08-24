@@ -41,7 +41,9 @@ export class TransactionsController {
     @Body() createTransactionDto: CreateTransactionDto,
     @Req() req: Request,
   ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    const ipAddress = req.ip || req.connection.remoteAddress;  
+    console.log(`Creating transaction for user ${userId} from IP ${ipAddress}`);
+    console.log('Transaction details:', createTransactionDto);  
     return this.transactionsService.create(userId, createTransactionDto, ipAddress);
   }
 
