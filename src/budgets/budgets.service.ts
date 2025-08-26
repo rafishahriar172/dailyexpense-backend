@@ -32,8 +32,8 @@ export class BudgetsService {
         isActive: true,
         OR: [
           {
-            startDate: { lte: dto.endDate },
-            endDate: { gte: dto.startDate },
+            startDate: { lte: new Date(dto.endDate) },
+            endDate: { gte: new Date(dto.startDate) },
           },
         ],
       },
@@ -52,8 +52,8 @@ export class BudgetsService {
         category: dto.category,
         amount: dto.amount,
         period: dto.period,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
       },
     });
 
@@ -61,8 +61,8 @@ export class BudgetsService {
     const spentAmount = await this.calculateSpentAmount(
       userId,
       dto.category,
-      dto.startDate,
-      dto.endDate,
+      new Date(dto.startDate),
+      new Date(dto.endDate),
     );
 
     const updatedBudget = await this.prisma.budget.update({

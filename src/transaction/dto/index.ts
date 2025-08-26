@@ -1,6 +1,4 @@
 /* eslint-disable prettier/prettier */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
@@ -129,6 +127,7 @@ export class CreateTransferDto {
   toAccountId: string;
 
   @ApiProperty({ example: '100.50' })
+  @IsNotEmpty()
   @Transform(({ value }) => new Decimal(value))
   amount: Decimal;
 
@@ -149,10 +148,18 @@ export class CreateTransferDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @Transform(({ value }) => (value ? new Date(value).toISOString() : undefined))
   @IsDateString()
-  transactionDate?: Date;
-  category: TransactionCategory = TransactionCategory.ACCOUNT_TRANSFER;
-  notes: any;
+  transactionDate?: string;
+
+  @ApiProperty({ enum: TransactionCategory, required: false })
+  @IsOptional()
+  @IsEnum(TransactionCategory)
+  category?: TransactionCategory = TransactionCategory.ACCOUNT_TRANSFER;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  notes?: string; // Changed from 'any' to 'string'
 }
 
 export class GetTransactionsQueryDto {

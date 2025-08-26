@@ -1,6 +1,6 @@
 /* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -471,24 +471,38 @@ export class TransactionsService {
       }),
     };
 
-    const [totalIncome, totalExpense, transactionCount, categoryStats] =
-      await Promise.all([
-        this.prisma.transaction.aggregate({
-          where: { ...where, type: TransactionType.INCOME },
-          _sum: { amount: true },
-        }),
-        this.prisma.transaction.aggregate({
-          where: { ...where, type: TransactionType.EXPENSE },
-          _sum: { amount: true },
-        }),
-        this.prisma.transaction.count({ where }),
-        this.prisma.transaction.groupBy({
-          by: ['category', 'type'],
-          where,
-          _sum: { amount: true },
-          _count: { _all: true },
-        }),
-      ]);
+    const [
+      totalIncome,
+      totalExpense,
+      transactionCount,
+      categoryStats,
+      monthlyTrend,
+    ] = await Promise.all([
+      this.prisma.transaction.aggregate({
+        where: { ...where, type: TransactionType.INCOME },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { ...where, type: TransactionType.EXPENSE },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.count({ where }),
+      this.prisma.transaction.groupBy({
+        by: ['category', 'type'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      // Use the helper method
+      this.getMonthlyTrend(userId, dateFrom, dateTo),
+    ]);
+
+    // Process monthly trend data to ensure proper formatting
+    const processedMonthlyTrend = monthlyTrend.map((item) => ({
+      month: item.month,
+      income: Number(item.income) || 0,
+      expenses: Number(item.expenses) || 0,
+    }));
 
     return {
       totalIncome: totalIncome._sum.amount || 0,
@@ -498,6 +512,7 @@ export class TransactionsService {
         (totalExpense._sum.amount?.toNumber() || 0),
       transactionCount,
       categoryBreakdown: categoryStats,
+      monthlyTrend: processedMonthlyTrend,
     };
   }
 
@@ -529,5 +544,61 @@ export class TransactionsService {
         },
       });
     }
+  }
+
+  private async getMonthlyTrend(
+    userId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    // Use Prisma groupBy instead of raw SQL - this automatically handles table names
+    const where: Prisma.TransactionWhereInput = {
+      userId,
+      ...((dateFrom || dateTo) && {
+        transactionDate: {
+          ...(dateFrom && { gte: new Date(dateFrom) }),
+          ...(dateTo && { lte: new Date(dateTo) }),
+        },
+      }),
+    };
+
+    // Get all transactions and group them manually
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      select: {
+        transactionDate: true,
+        type: true,
+        amount: true,
+      },
+      orderBy: {
+        transactionDate: 'desc',
+      },
+    });
+
+    // Group by month
+    const monthlyData = transactions.reduce(
+      (acc, transaction) => {
+        const month = transaction.transactionDate.toISOString().substring(0, 7); // YYYY-MM
+
+        if (!acc[month]) {
+          acc[month] = { month, income: 0, expenses: 0 };
+        }
+
+        const amount = Number(transaction.amount) || 0;
+        if (transaction.type === 'INCOME') {
+          acc[month].income += amount;
+        } else if (transaction.type === 'EXPENSE') {
+          acc[month].expenses += amount;
+        }
+
+        return acc;
+      },
+      {} as Record<string, { month: string; income: number; expenses: number }>,
+    );
+
+    // Convert to array and sort by month (most recent first)
+    return Object.values(monthlyData)
+      .sort((a, b) => b.month.localeCompare(a.month))
+      .slice(0, 12);
   }
 }

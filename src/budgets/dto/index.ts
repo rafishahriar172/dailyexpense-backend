@@ -1,13 +1,15 @@
 /* eslint-disable prettier/prettier */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { 
-  IsString, 
-  IsEnum, 
-  IsDateString, 
-  IsOptional, 
+import {
+  IsString,
+  IsEnum,
+  IsDateString,
+  IsOptional,
   IsBoolean,
-  MaxLength 
+  MaxLength,
+  IsNotEmpty,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -25,20 +27,25 @@ export class CreateBudgetDto {
   category: TransactionCategory;
 
   @ApiProperty({ example: '500.00' })
-  @Transform(({ value }) => new Decimal(value))
+  @IsNotEmpty()
+  @Transform(({ value }) =>
+    value !== undefined ? new Decimal(value.toString()) : undefined,
+  )
+  
   amount: Decimal;
-
   @ApiProperty({ example: 'monthly', description: 'Budget period type' })
   @IsString()
   period: string;
 
   @ApiProperty({ example: '2024-01-01T00:00:00Z' })
+  @Transform(({ value }) => (value ? new Date(value).toISOString() : undefined))
   @IsDateString()
-  startDate: Date;
+  startDate: string; // ✅ use string
 
   @ApiProperty({ example: '2024-01-31T23:59:59Z' })
+  @Transform(({ value }) => (value ? new Date(value).toISOString() : undefined))
   @IsDateString()
-  endDate: Date;
+  endDate: string; // ✅ use string
 }
 
 export class UpdateBudgetDto {
@@ -55,7 +62,7 @@ export class UpdateBudgetDto {
 
   @ApiProperty({ example: '500.00', required: false })
   @IsOptional()
-  @Transform(({ value }) => value ? new Decimal(value) : undefined)
+  @Transform(({ value }) => (value ? new Decimal(value) : undefined))
   amount?: Decimal;
 
   @ApiProperty({ required: false })
@@ -65,11 +72,13 @@ export class UpdateBudgetDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @Transform(({ value }) => (value ? new Date(value).toISOString() : undefined))
   @IsDateString()
   startDate?: Date;
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @Transform(({ value }) => (value ? new Date(value).toISOString() : undefined))
   @IsDateString()
   endDate?: Date;
 
